@@ -1,0 +1,604 @@
+<title>B12 출차</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800&family=IBM+Plex+Sans+KR:wght@400;500;700&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: an underground garage — dark asphalt lot on the left, a concrete control column with level signs on the right; stacks on phones. */
+:root {
+  --concrete: #e4e7e4;
+  --slab: #f2f3f1;
+  --ink: #1d2225;
+  --muted: #5e676b;
+  --line: #c9cecb;
+  --asphalt: #2b3034;
+  --paint: #f0c02e;
+  --exit: #2f9e62;
+  --target: #d8392c;
+  --display: "Big Shoulders Display", "IBM Plex Sans KR", "Arial Narrow", sans-serif;
+  --body: "IBM Plex Sans KR", "Malgun Gothic", system-ui, sans-serif;
+  --mono: "JetBrains Mono", Consolas, ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --concrete: #15181a;
+    --slab: #1e2225;
+    --ink: #e3e7e5;
+    --muted: #8d969a;
+    --line: #343a3e;
+    --asphalt: #0f1113;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --concrete: #15181a;
+  --slab: #1e2225;
+  --ink: #e3e7e5;
+  --muted: #8d969a;
+  --line: #343a3e;
+  --asphalt: #0f1113;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--concrete);
+  color: var(--ink);
+  font-family: var(--body);
+  font-size: 15px;
+  line-height: 1.55;
+  padding-block: 28px 40px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 920px; margin: 0 auto; display: grid; gap: 22px; }
+
+header { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+h1 { margin: 0; font-family: var(--display); font-weight: 800; font-size: 44px; line-height: 1; letter-spacing: .01em; text-wrap: balance; }
+h1 .lv { display: inline-block; background: var(--paint); color: #1d2225; padding: 2px 10px 0; margin-right: 8px; }
+.sub { margin: 6px 0 0; color: var(--muted); max-width: 60ch; }
+
+.main { display: grid; grid-template-columns: minmax(0, 530px) minmax(240px, 1fr); gap: 28px; align-items: start; }
+@media (max-width: 760px) { .main { grid-template-columns: 1fr; } }
+
+/* ---------- board ---------- */
+.board {
+  position: relative;
+  width: calc(100% - 50px);
+  max-width: 480px;
+  aspect-ratio: 1;
+  background: var(--asphalt);
+  border: 10px solid #4a5156;
+  border-radius: 6px;
+}
+@media (max-width: 760px) { .board { justify-self: center; } }
+.lot {
+  position: absolute; inset: 0;
+  background-image:
+    linear-gradient(to right, rgba(255,255,255,.07) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255,255,255,.07) 1px, transparent 1px);
+  background-size: calc(100% / 6) calc(100% / 6);
+  touch-action: none;
+}
+.exit {
+  position: absolute;
+  right: -10px; top: calc(100% / 3); height: calc(100% / 6); width: 10px;
+  background: var(--asphalt);
+}
+.exit-sign {
+  position: absolute; left: calc(100% + 16px); top: calc(100% / 3); height: calc(100% / 6);
+  display: flex; flex-direction: column; justify-content: center; gap: 2px;
+  font-family: var(--display); font-weight: 800; font-size: 15px; letter-spacing: .08em;
+  color: var(--exit); line-height: 1;
+}
+.exit-sign .arrow { font-size: 22px; }
+.lane-mark {
+  position: absolute; left: 0; right: 0; top: calc(100% / 3 + 100% / 12 - 1px); height: 2px;
+  background: repeating-linear-gradient(to right, rgba(240,192,46,.35) 0 14px, transparent 14px 26px);
+  pointer-events: none;
+}
+
+.car {
+  position: absolute;
+  left: calc(var(--x) * 100% / 6 + 5px);
+  top: calc(var(--y) * 100% / 6 + 5px);
+  width: calc(var(--w) * 100% / 6 - 10px);
+  height: calc(var(--h) * 100% / 6 - 10px);
+  background: var(--c);
+  border-radius: 9px;
+  box-shadow: inset 0 -3px 0 rgba(0,0,0,.25), inset 0 2px 0 rgba(255,255,255,.18), 0 3px 6px rgba(0,0,0,.35);
+  cursor: grab;
+  transition: left .16s ease, top .16s ease, transform .16s ease;
+  outline: none;
+  touch-action: none;
+}
+.car::after { /* windshield */
+  content: ""; position: absolute; background: rgba(15,20,25,.38); border-radius: 4px;
+}
+.car.h::after { top: 16%; bottom: 16%; right: 18%; width: 13%; }
+.car.v::after { left: 16%; right: 16%; bottom: 18%; height: 13%; }
+.car.t.h::after { right: 10%; width: 9%; }
+.car.t.v::after { bottom: 10%; height: 9%; }
+.car.dragging { cursor: grabbing; transition: none; z-index: 5; }
+.car.sel { box-shadow: 0 0 0 3px var(--paint), inset 0 -3px 0 rgba(0,0,0,.25), 0 3px 8px rgba(0,0,0,.4); }
+.car:focus-visible { box-shadow: 0 0 0 3px #fff, 0 0 0 6px var(--paint); }
+.car.target::before {
+  content: "→"; position: absolute; inset: 0; display: grid; place-items: center;
+  color: rgba(255,255,255,.85); font-weight: 700; font-size: 20px; padding-right: 22%;
+}
+.car.hint { animation: pulse .9s ease-in-out 3; }
+@keyframes pulse { 50% { filter: brightness(1.45); } }
+.ghost {
+  position: absolute; border: 2px dashed var(--paint); border-radius: 9px; pointer-events: none;
+  left: calc(var(--x) * 100% / 6 + 5px); top: calc(var(--y) * 100% / 6 + 5px);
+  width: calc(var(--w) * 100% / 6 - 10px); height: calc(var(--h) * 100% / 6 - 10px);
+}
+.car.leaving { transition: left .5s cubic-bezier(.5,0,.9,.4); }
+
+.veil {
+  position: absolute; inset: 0; display: grid; place-items: center; text-align: center;
+  background: rgba(15,17,19,.78); color: #eef0ee; padding: 20px; z-index: 10;
+}
+.veil h2 { margin: 0; font-family: var(--display); font-weight: 800; font-size: 40px; line-height: 1.05; }
+.veil p { margin: 6px 0 0; color: #b9c0c3; }
+.stars { font-size: 30px; letter-spacing: 6px; color: var(--paint); margin-top: 8px; }
+.stars .off { color: #555c61; }
+.veil .row { display: flex; gap: 10px; justify-content: center; margin-top: 18px; flex-wrap: wrap; }
+
+/* ---------- side panel ---------- */
+.panel { display: grid; gap: 20px; align-content: start; }
+.levelhead { display: flex; align-items: baseline; gap: 12px; }
+.levelhead .big { font-family: var(--display); font-weight: 800; font-size: 64px; line-height: .9; }
+.levelhead .tag { color: var(--muted); font-size: 13px; }
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 2px solid var(--ink); border-bottom: 1px solid var(--line); }
+.stat { padding: 10px 0; display: grid; gap: 2px; }
+.stat + .stat { padding-left: 12px; border-left: 1px solid var(--line); }
+.stat .k { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.stat .v { font-family: var(--mono); font-size: 22px; font-variant-numeric: tabular-nums; }
+.controls { display: flex; flex-wrap: wrap; gap: 8px; }
+button {
+  font: inherit; font-size: 14px; font-weight: 500;
+  border: 1px solid var(--line); background: var(--slab); color: var(--ink);
+  padding: 8px 14px; border-radius: 4px; cursor: pointer;
+}
+button:hover:not(:disabled) { border-color: var(--muted); }
+button:focus-visible { outline: 3px solid var(--paint); outline-offset: 2px; }
+button:disabled { opacity: .45; cursor: default; }
+button.primary { background: var(--paint); color: #1d2225; border-color: var(--paint); font-weight: 700; }
+kbd { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-left: 6px; }
+
+.floors h3 { margin: 0 0 8px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 500; }
+.floor-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+.floor {
+  padding: 6px 0 4px; display: grid; justify-items: center; gap: 0; border-radius: 4px;
+  font-family: var(--display); font-weight: 800; font-size: 18px; line-height: 1.1;
+}
+.floor small { font-family: var(--body); font-size: 10px; color: var(--paint); letter-spacing: 1px; min-height: 14px; }
+.floor.cur { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+.rules { color: var(--muted); font-size: 13px; margin: 0; padding-left: 18px; display: grid; gap: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .car, .car.leaving { transition: none; }
+  .car.hint { animation: none; outline: 3px solid var(--paint); }
+}
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1><span class="lv">B12</span>출차</h1>
+      <p class="sub">빨간 차를 오른쪽 출구로 빼세요. 차는 앞뒤로만 움직입니다. 층이 깊어질수록 최소 이동 수가 늘어납니다.</p>
+    </div>
+  </header>
+
+  <div class="main">
+    <div class="board" id="board">
+      <div class="lot" id="lot"><div class="lane-mark"></div></div>
+      <div class="exit"></div>
+      <div class="exit-sign"><span>EXIT</span><span class="arrow">→</span></div>
+    </div>
+
+    <div class="panel">
+      <div class="levelhead">
+        <span class="big" id="lvName">B1</span>
+        <span class="tag" id="lvTag">최소 – 수</span>
+      </div>
+      <div class="stats">
+        <div class="stat"><span class="k">이동</span><span class="v" id="sMoves">0</span></div>
+        <div class="stat"><span class="k">시간</span><span class="v" id="sTime">0:00</span></div>
+        <div class="stat"><span class="k">힌트</span><span class="v" id="sHints">0</span></div>
+      </div>
+      <div class="controls">
+        <button id="bUndo">되돌리기<kbd>Z</kbd></button>
+        <button id="bReset">처음부터<kbd>R</kbd></button>
+        <button id="bHint">힌트<kbd>H</kbd></button>
+      </div>
+      <div class="floors">
+        <h3>층 선택</h3>
+        <div class="floor-grid" id="floors"></div>
+      </div>
+      <ul class="rules">
+        <li>차를 드래그하거나, 클릭 후 방향키로 움직입니다.</li>
+        <li>같은 차를 연달아 움직이면 1수로 칩니다.</li>
+        <li>최소 수로 풀면 ★★★, 힌트를 쓰면 최대 ★★.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  // ---------- puzzle engine ----------
+  const STAGES = [[4,6],[6,8],[8,10],[10,12],[12,14],[14,16],[16,18],[18,20],[20,22],[22,24],[24,26],[26,30]];
+  const COLORS = ["#3b7dd8","#4fa3a5","#8e6cc9","#7fa650","#d9824a","#5c6bc0","#b8ab8c","#6d8a99","#c25f8c","#a3863a","#5a9e86","#9a6a52","#7a8fd0"];
+
+  function mulberry32(a) {
+    return () => {
+      a = a + 0x6D2B79F5 | 0;
+      let t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+
+  const cellOf = (v, p, k) => v.o === "h" ? v.f * 6 + p + k : (p + k) * 6 + v.f;
+
+  function fillGrid(veh, s, skip) {
+    const g = new Uint8Array(36);
+    for (let i = 0; i < veh.length; i++) {
+      if (i === skip) continue;
+      for (let k = 0; k < veh[i].len; k++) g[cellOf(veh[i], s[i], k)] = i + 1;
+    }
+    return g;
+  }
+
+  function moves(veh, s) {
+    const g = fillGrid(veh, s, -1), out = [];
+    for (let i = 0; i < veh.length; i++) {
+      const v = veh[i];
+      for (let p = s[i] - 1; p >= 0 && !g[cellOf(v, p, 0)]; p--) out.push(i, p);
+      for (let p = s[i] + 1; p + v.len <= 6 && !g[cellOf(v, p, v.len - 1)]; p++) out.push(i, p);
+    }
+    return out;
+  }
+
+  function randomBoard(rng, count) {
+    const g = new Uint8Array(36), veh = [], pos = [];
+    const place = (v, p) => {
+      for (let k = 0; k < v.len; k++) if (g[cellOf(v, p, k)]) return false;
+      for (let k = 0; k < v.len; k++) g[cellOf(v, p, k)] = 1;
+      veh.push(v); pos.push(p); return true;
+    };
+    place({ o: "h", f: 2, len: 2 }, Math.floor(rng() * 4));
+    let trucks = 0;
+    for (let tries = 0; veh.length < count && tries < 300; tries++) {
+      const len = trucks < 4 && rng() < 0.3 ? 3 : 2;
+      const o = rng() < 0.5 ? "h" : "v";
+      const f = Math.floor(rng() * 6);
+      if (o === "h" && f === 2) continue;
+      if (place({ o, f, len }, Math.floor(rng() * (7 - len))) && len === 3) trucks++;
+    }
+    return { veh, pos };
+  }
+
+  // Explore every reachable arrangement, then measure each one's distance to a solved arrangement.
+  function analyze(veh, start, cap) {
+    const idx = new Map([[start.join(""), 0]]), states = [start], adj = [];
+    for (let q = 0; q < states.length; q++) {
+      const s = states[q], m = moves(veh, s), list = [];
+      for (let n = 0; n < m.length; n += 2) {
+        const t = s.slice(); t[m[n]] = m[n + 1];
+        const key = t.join("");
+        let j = idx.get(key);
+        if (j === undefined) {
+          if (states.length >= cap) return null;
+          j = states.length; idx.set(key, j); states.push(t);
+        }
+        list.push(j);
+      }
+      adj.push(list);
+    }
+    const dist = new Int16Array(states.length).fill(-1), queue = [];
+    states.forEach((s, i) => { if (s[0] === 4) { dist[i] = 0; queue.push(i); } });
+    if (!queue.length) return null;
+    for (let h = 0; h < queue.length; h++) {
+      const i = queue[h];
+      for (const j of adj[i]) if (dist[j] < 0) { dist[j] = dist[i] + 1; queue.push(j); }
+    }
+    let max = 0;
+    for (const d of dist) if (d > max) max = d;
+    return { idx, states, dist, max };
+  }
+
+  function pickStart(a, want, rng) {
+    const c = [];
+    a.dist.forEach((d, i) => { if (d === want) c.push(i); });
+    const i = c[Math.floor(rng() * c.length)];
+    return { start: a.states[i], opt: want };
+  }
+
+  const cache = {};
+  function generate(stage, done) {
+    if (cache[stage]) return done(cache[stage]);
+    const [lo, hi] = STAGES[stage];
+    const rng = mulberry32(20261030 + stage * 7919);
+    let best = null, tries = 0;
+    const finish = (b, a, want) => {
+      const p = pickStart(a, want, rng);
+      done(cache[stage] = { veh: b.veh, start: p.start, opt: p.opt, idx: a.idx, dist: a.dist });
+    };
+    const step = () => {
+      const t0 = performance.now();
+      while (performance.now() - t0 < 40) {
+        tries++;
+        const count = Math.min(14, 7 + Math.floor(stage / 2) + Math.floor(rng() * 4));
+        const b = randomBoard(rng, count);
+        const a = analyze(b.veh, b.pos, 40000);
+        if (a) {
+          if (a.max >= lo) return finish(b, a, Math.min(a.max, hi));
+          if (!best || a.max > best.a.max) best = { b, a };
+        }
+        if (tries >= 900 && best) return finish(best.b, best.a, best.a.max);
+      }
+      setTimeout(step, 0);
+    };
+    step();
+  }
+
+  // ---------- game state ----------
+  const $ = id => document.getElementById(id);
+  const lot = $("lot"), board = $("board");
+  let store = { cleared: {} };
+  try { store = JSON.parse(localStorage.getItem("b12-progress")) || store; } catch (e) {}
+  const save = () => { try { localStorage.setItem("b12-progress", JSON.stringify(store)); } catch (e) {} };
+
+  let stage = 0, P = null, cur = [], history = [], moveCount = 0, lastVeh = -1, hints = 0;
+  let selected = -1, won = false, t0 = 0, elapsed = 0, timer = null, cars = [], ghost = null, veil = null;
+
+  const unlocked = () => {
+    let n = 0;
+    while (store.cleared[n]) n++;
+    return Math.min(n, STAGES.length - 1);
+  };
+
+  function renderFloors() {
+    const box = $("floors"); box.innerHTML = "";
+    const open = unlocked();
+    STAGES.forEach((_, i) => {
+      const b = document.createElement("button");
+      b.className = "floor" + (i === stage ? " cur" : "");
+      const st = store.cleared[i] ? store.cleared[i].stars : 0;
+      b.innerHTML = `B${i + 1}<small>${"★".repeat(st)}</small>`;
+      b.disabled = i > open;
+      b.title = i > open ? "앞 층을 먼저 빠져나오세요" : `B${i + 1}로 이동`;
+      b.onclick = () => load(i);
+      box.appendChild(b);
+    });
+  }
+
+  function showVeil(html) {
+    hideVeil();
+    veil = document.createElement("div");
+    veil.className = "veil";
+    veil.innerHTML = html;
+    board.appendChild(veil);
+  }
+  function hideVeil() { if (veil) { veil.remove(); veil = null; } }
+
+  function load(i) {
+    stage = i; P = null; won = false; selected = -1;
+    clearInterval(timer);
+    lot.querySelectorAll(".car, .ghost").forEach(e => e.remove());
+    $("lvName").textContent = `B${i + 1}`;
+    $("lvTag").textContent = "주차장 배치 중…";
+    renderFloors();
+    showVeil(`<div><h2>B${i + 1}</h2><p>차를 배치하고 있어요…</p></div>`);
+    setTimeout(() => generate(i, p => { if (stage === i) begin(p); }), 30);
+  }
+
+  function begin(p) {
+    P = p;
+    hideVeil();
+    $("lvTag").textContent = `최소 ${p.opt}수`;
+    cars = p.veh.map((v, i) => {
+      const el = document.createElement("div");
+      el.className = `car ${v.o}${v.len === 3 ? " t" : ""}${i === 0 ? " target" : ""}`;
+      el.style.setProperty("--c", i === 0 ? "var(--target)" : COLORS[(i - 1) % COLORS.length]);
+      el.style.setProperty("--w", v.o === "h" ? v.len : 1);
+      el.style.setProperty("--h", v.o === "v" ? v.len : 1);
+      el.tabIndex = 0;
+      el.setAttribute("aria-label", i === 0 ? "빨간 차" : `차 ${i}`);
+      attachDrag(el, i);
+      el.addEventListener("focus", () => select(i));
+      lot.appendChild(el);
+      return el;
+    });
+    restart();
+  }
+
+  function restart() {
+    if (!P) return;
+    cur =P.start.slice(); history = []; moveCount = 0; lastVeh = -1; hints = 0; won = false;
+    select(-1); clearHint(); hideVeil();
+    cars[0].classList.remove("leaving");
+    elapsed = 0; t0 = Date.now();
+    clearInterval(timer);
+    timer = setInterval(tick, 500);
+    draw(); tick();
+  }
+
+  function tick() {
+    if (!won) elapsed = Date.now() - t0;
+    const s = Math.floor(elapsed / 1000);
+    $("sTime").textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  }
+
+  function draw() {
+    P.veh.forEach((v, i) => {
+      cars[i].style.setProperty("--x", v.o === "h" ? cur[i] : v.f);
+      cars[i].style.setProperty("--y", v.o === "v" ? cur[i] : v.f);
+    });
+    $("sMoves").textContent = moveCount;
+    $("sHints").textContent = hints;
+    $("bUndo").disabled = !history.length || won;
+    $("bHint").disabled = won;
+  }
+
+  function select(i) {
+    selected = i;
+    cars.forEach((c, j) => c.classList.toggle("sel", j === i));
+  }
+
+  function range(i) {
+    const v = P.veh[i], g = fillGrid(P.veh, cur, i);
+    let lo = cur[i], hi = cur[i];
+    while (lo > 0 && !g[cellOf(v, lo - 1, 0)]) lo--;
+    while (hi + v.len < 6 && !g[cellOf(v, hi + 1, v.len - 1)]) hi++;
+    return [lo, hi];
+  }
+
+  function move(i, p) {
+    if (won || p === cur[i]) return;
+    history.push({ s: cur.slice(), moveCount, lastVeh });
+    cur[i] = p;
+    if (i !== lastVeh) moveCount++;
+    lastVeh = i;
+    clearHint();
+    draw();
+    if (cur[0] === 4) win();
+  }
+
+  function undo() {
+    if (!history.length || won) return;
+    const h = history.pop();
+    cur = h.s; moveCount = h.moveCount; lastVeh = h.lastVeh;
+    clearHint(); draw();
+  }
+
+  function clearHint() {
+    if (ghost) { ghost.remove(); ghost = null; }
+    cars.forEach(c => c.classList.remove("hint"));
+  }
+
+  function hint() {
+    if (won || !P) return;
+    clearHint();
+    const d = P.dist[P.idx.get(cur.join(""))];
+    const m = moves(P.veh, cur);
+    for (let n = 0; n < m.length; n += 2) {
+      const t = cur.slice(); t[m[n]] = m[n + 1];
+      if (P.dist[P.idx.get(t.join(""))] === d - 1) {
+        const i = m[n], v = P.veh[i];
+        ghost = document.createElement("div");
+        ghost.className = "ghost";
+        ghost.style.setProperty("--x", v.o === "h" ? t[i] : v.f);
+        ghost.style.setProperty("--y", v.o === "v" ? t[i] : v.f);
+        ghost.style.setProperty("--w", v.o === "h" ? v.len : 1);
+        ghost.style.setProperty("--h", v.o === "v" ? v.len : 1);
+        lot.appendChild(ghost);
+        void cars[i].offsetWidth;
+        cars[i].classList.add("hint");
+        hints++;
+        draw();
+        return;
+      }
+    }
+  }
+
+  function win() {
+    won = true;
+    clearInterval(timer); tick();
+    select(-1);
+    const opt = P.opt;
+    let stars = moveCount <= opt ? 3 : moveCount <= Math.ceil(opt * 1.5) ? 2 : 1;
+    if (hints) stars = Math.min(stars, 2);
+    const prev = store.cleared[stage];
+    if (!prev || stars > prev.stars || (stars === prev.stars && moveCount < prev.moves)) {
+      store.cleared[stage] = { stars, moves: moveCount };
+      save();
+    }
+    renderFloors();
+    setTimeout(() => {
+      cars[0].classList.add("leaving");
+      cars[0].style.setProperty("--x", 7);
+    }, 80);
+    const last = stage === STAGES.length - 1;
+    const s = Math.floor(elapsed / 1000);
+    setTimeout(() => {
+      showVeil(`<div>
+        <h2>B${stage + 1} 출차 완료</h2>
+        <div class="stars">${"★".repeat(stars)}<span class="off">${"★".repeat(3 - stars)}</span></div>
+        <p>${moveCount}수 (최소 ${opt}수) · ${Math.floor(s / 60)}분 ${s % 60}초${hints ? ` · 힌트 ${hints}회` : ""}</p>
+        ${last ? "<p>B12까지 모두 빠져나왔습니다. ★★★을 노려 보세요.</p>" : ""}
+        <div class="row">
+          <button id="vRetry">다시 풀기</button>
+          ${last ? "" : `<button class="primary" id="vNext">B${stage + 2}로 내려가기</button>`}
+        </div></div>`);
+      $("vRetry").onclick = restart;
+      if (!last) { $("vNext").onclick = () => load(stage + 1); $("vNext").focus(); }
+      draw();
+    }, 550);
+  }
+
+  // ---------- input ----------
+  function attachDrag(el, i) {
+    let drag = null;
+    el.addEventListener("pointerdown", e => {
+      if (won) return;
+      e.preventDefault();
+      el.focus({ preventScroll: true });
+      select(i);
+      el.setPointerCapture(e.pointerId);
+      drag = { x: e.clientX, y: e.clientY, r: range(i), cell: lot.clientWidth / 6, at: cur[i] };
+      el.classList.add("dragging");
+    });
+    el.addEventListener("pointermove", e => {
+      if (!drag) return;
+      const h = P.veh[i].o === "h";
+      const d = ((h ? e.clientX - drag.x : e.clientY - drag.y)) / drag.cell;
+      drag.at = Math.max(drag.r[0], Math.min(drag.r[1], cur[i] + d));
+      const off = (drag.at - cur[i]) * drag.cell;
+      el.style.transform = h ? `translateX(${off}px)` : `translateY(${off}px)`;
+    });
+    const end = () => {
+      if (!drag) return;
+      const p = Math.round(drag.at), h = P.veh[i].o === "h";
+      const rest = (drag.at - p) * drag.cell;
+      drag = null;
+      move(i, p);
+      el.style.transform = h ? `translateX(${rest}px)` : `translateY(${rest}px)`;
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        el.classList.remove("dragging");
+        el.style.transform = "";
+      }));
+    };
+    el.addEventListener("pointerup", end);
+    el.addEventListener("pointercancel", end);
+  }
+
+  document.addEventListener("keydown", e => {
+    if (e.ctrlKey || e.metaKey || e.altKey) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") { e.preventDefault(); undo(); }
+      return;
+    }
+    const k = e.key.toLowerCase();
+    if (k === "z") return undo();
+    if (k === "r") return restart();
+    if (k === "h") return hint();
+    if (selected < 0 || won) return;
+    const v = P.veh[selected];
+    const dir = { arrowleft: [-1, "h"], arrowright: [1, "h"], arrowup: [-1, "v"], arrowdown: [1, "v"] }[k];
+    if (!dir || dir[1] !== v.o) return;
+    e.preventDefault();
+    const [lo, hi] = range(selected), p = cur[selected] + dir[0];
+    if (p >= lo && p <= hi) move(selected, p);
+  });
+
+  lot.addEventListener("pointerdown", e => { if (e.target === lot) select(-1); });
+  $("bUndo").onclick = undo;
+  $("bReset").onclick = () => P && restart();
+  $("bHint").onclick = hint;
+
+  load(unlocked());
+})();
+</script>
